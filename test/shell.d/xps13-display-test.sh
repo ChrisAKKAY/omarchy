@@ -6,6 +6,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 detector="$ROOT/bin/omarchy-hw-dell-xps13-dx13260-ptl"
 leaf="$ROOT/install/hardware/dell-xps13-ptl-display.sh"
+firmware_leaf="$ROOT/install/hardware/dell-xps13-ptl-speaker-firmware.sh"
 all="$ROOT/install/hardware/all.sh"
 packages="$ROOT/install/omarchy-other.packages"
 migration=$(grep -l "dell-xps13-ptl-display.sh" "$ROOT"/migrations/*.sh | head -1)
@@ -20,9 +21,19 @@ pass "the XPS 13 display fix runs during hardware setup"
 [[ -n $migration ]] || fail "a migration applies the display fix on existing installs"
 pass "a migration applies the display fix on existing installs"
 
-grep -qx 'linux-firmware-cirrus' "$packages" ||
-  fail "the offline mirror seeds linux-firmware-cirrus for the XPS 13 speaker firmware"
-pass "the offline mirror seeds linux-firmware-cirrus for the XPS 13 speaker firmware"
+grep -q 'run_logged .*hardware/dell-xps13-ptl-speaker-firmware.sh' "$all" ||
+  fail "the XPS 13 speaker firmware aliases are installed during hardware setup"
+pass "the XPS 13 speaker firmware aliases are installed during hardware setup"
+
+grep -qx 'dell-xps13-speaker-firmware' "$packages" ||
+  fail "the offline mirror carries the XPS 13 speaker firmware aliases"
+pass "the offline mirror carries the XPS 13 speaker firmware aliases"
+
+# [core] is listed before [omarchy], so pacman would take Arch's copy of any
+# name both carry and an Omarchy build of it would never be installed.
+! grep -qx 'linux-firmware-cirrus' "$packages" ||
+  fail "the speaker firmware does not rely on shadowing an Arch package name"
+pass "the speaker firmware does not rely on shadowing an Arch package name"
 
 test_tmp=$(mktemp -d)
 trap 'rm -rf "$test_tmp"' EXIT
@@ -105,6 +116,15 @@ cat >"$test_tmp/bin/omarchy-cmd-present" <<'SH'
 #!/bin/bash
 [[ ${TEST_MISSING_COMMAND:-} != "$1" ]] && command -v "$1" >/dev/null
 SH
+cat >"$test_tmp/bin/omarchy-pkg-missing" <<'SH'
+#!/bin/bash
+[[ ! -e $TEST_PKG_DB/$1 ]]
+SH
+cat >"$test_tmp/bin/omarchy-pkg-add" <<'SH'
+#!/bin/bash
+echo "pkg-add $*" >>"$TEST_LOG"
+touch "$TEST_PKG_DB/$1"
+SH
 cat >"$test_tmp/bin/limine-mkinitcpio" <<'SH'
 #!/bin/bash
 echo rebuild >>"$TEST_LOG"
@@ -116,12 +136,14 @@ SH
 chmod +x "$test_tmp"/bin/*
 
 log="$test_tmp/log"
+pkg_db="$test_tmp/pkg-db"
+mkdir -p "$pkg_db"
 marker="$test_tmp/var/migration-marker"
 cmdline="$test_tmp/cmdline"
 
 run_migration() {
   : >"$log"
-  PATH="$test_tmp/bin:$PATH" TEST_LOG="$log" OMARCHY_PATH="$ROOT" \
+  PATH="$test_tmp/bin:$PATH" TEST_LOG="$log" TEST_PKG_DB="$pkg_db" OMARCHY_PATH="$ROOT" \
     TEST_PRODUCT_NAME="$1" TEST_INTEL_PTL=1 \
     OMARCHY_LIMINE_DROP_IN_DIR="$test_tmp/etc/limine-entry-tool.d" \
     OMARCHY_LIMINE_CONF="$limine_conf" \
@@ -130,12 +152,45 @@ run_migration() {
     bash -euo pipefail "$migration"
 }
 
+run_firmware_leaf() {
+  : >"$log"
+  (
+    export PATH="$test_tmp/bin:$PATH" TEST_LOG="$log" TEST_PKG_DB="$pkg_db"
+    export TEST_PRODUCT_NAME="$1" TEST_INTEL_PTL="$2"
+    # shellcheck disable=SC1090
+    source "$firmware_leaf"
+  )
+}
+
+run_firmware_leaf "XPS 13 DX13260" 0
+[[ ! -s $log ]] || fail "other machines do not get the speaker firmware aliases"
+pass "other machines do not get the speaker firmware aliases"
+
+run_firmware_leaf "XPS 13 DX13260" 1
+[[ $(<"$log") == "pkg-add dell-xps13-speaker-firmware" ]] ||
+  fail "the matching machine gets the speaker firmware aliases"
+pass "the matching machine gets the speaker firmware aliases"
+rm -f "$pkg_db"/*
+
 rm -f "$drop_in"
 echo "quiet splash" >"$cmdline"
 
 run_migration "XPS 9350" >/dev/null
 [[ ! -e $drop_in && ! -s $log ]] || fail "the migration leaves other machines alone"
 pass "the migration leaves other machines alone"
+
+# A manual PSR setting keeps the display repair away; the speakers still need
+# their firmware and the reboot that loads it.
+echo 'KERNEL_CMDLINE[default]+=" xe.enable_psr=0"' >"$limine_conf"
+run_migration "XPS 13 DX13260" >/dev/null
+[[ ! -e $drop_in && $(<"$log") == $'pkg-add dell-xps13-speaker-firmware\nstate set reboot-required' ]] ||
+  fail "the migration installs the speaker firmware aliases and asks for a reboot"
+pass "the migration installs the speaker firmware aliases and asks for a reboot"
+
+run_migration "XPS 13 DX13260" >/dev/null
+[[ ! -s $log ]] || fail "installed speaker firmware aliases are not installed again"
+pass "installed speaker firmware aliases are not installed again"
+rm -f "$limine_conf"
 
 TEST_MISSING_COMMAND=limine-mkinitcpio run_migration "XPS 13 DX13260" >/dev/null
 [[ ! -e $marker && $(<"$log") == "state set reboot-required" ]] ||

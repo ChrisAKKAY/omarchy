@@ -1,13 +1,17 @@
-echo "Force PSR1 on the Dell XPS 13 DX13260 display and pick up its speaker firmware"
+echo "Force PSR1 on the Dell XPS 13 DX13260 display and install its speaker firmware aliases"
 
 # The Sharp panel in the Panther Lake XPS 13 reports RFB storage errors in
 # both Panel Replay and PSR2 selective-update modes (edge line, flashes,
-# cursor lag); the hardware leaf writes a Limine drop-in forcing PSR1. The
-# machine's CS35L56 speaker firmware arrives through the normal package
-# upgrade (linux-firmware-cirrus) but only takes effect on a cold boot, so the
-# same reboot covers both.
+# cursor lag); the hardware leaf writes a Limine drop-in forcing PSR1. Its
+# CS35L56 amplifiers are silent until their firmware aliases are installed,
+# and only load firmware on a cold boot.
 
 omarchy-hw-dell-xps13-dx13260-ptl || exit 0
+
+if omarchy-pkg-missing dell-xps13-speaker-firmware; then
+  source "$OMARCHY_PATH/install/hardware/dell-xps13-ptl-speaker-firmware.sh"
+  omarchy-state set reboot-required
+fi
 
 running_cmdline="${OMARCHY_RUNNING_CMDLINE:-/proc/cmdline}"
 rebuild_marker="${OMARCHY_XPS13_DISPLAY_REBUILD_MARKER:-/var/lib/omarchy/migrations/1789660714}"

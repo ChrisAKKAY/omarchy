@@ -60,7 +60,7 @@ linux-firmware-marvell
 # Dell laptop support packages
 dell-xps-touchpad-haptics
 dell-xps13-sidecar-amps
-linux-firmware-cirrus
+dell-xps13-speaker-firmware
 
 # Speaker tunings (LV2 limiter every tuning ends in)
 lsp-plugins-lv2
