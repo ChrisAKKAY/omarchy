@@ -23,8 +23,8 @@ if [[ -f $DROP_IN ]] &&
   if [[ ! -e $rebuild_marker ]]; then
     if omarchy-cmd-present limine-mkinitcpio; then
       sudo limine-mkinitcpio
+      sudo install -Dm644 /dev/null "$rebuild_marker"
     fi
-    sudo install -Dm644 /dev/null "$rebuild_marker"
   fi
   omarchy-state set reboot-required
 fi

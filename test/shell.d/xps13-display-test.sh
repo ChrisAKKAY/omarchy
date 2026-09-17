@@ -103,7 +103,7 @@ pass "a drop-in carrying only one of the two flags is completed"
 # The migration, run the way omarchy-migrate runs it.
 cat >"$test_tmp/bin/omarchy-cmd-present" <<'SH'
 #!/bin/bash
-command -v "$1" >/dev/null
+[[ ${TEST_MISSING_COMMAND:-} != "$1" ]] && command -v "$1" >/dev/null
 SH
 cat >"$test_tmp/bin/limine-mkinitcpio" <<'SH'
 #!/bin/bash
@@ -136,6 +136,11 @@ echo "quiet splash" >"$cmdline"
 run_migration "XPS 9350" >/dev/null
 [[ ! -e $drop_in && ! -s $log ]] || fail "the migration leaves other machines alone"
 pass "the migration leaves other machines alone"
+
+TEST_MISSING_COMMAND=limine-mkinitcpio run_migration "XPS 13 DX13260" >/dev/null
+[[ ! -e $marker && $(<"$log") == "state set reboot-required" ]] ||
+  fail "a machine without limine-mkinitcpio records no rebuild"
+pass "a machine without limine-mkinitcpio records no rebuild"
 
 run_migration "XPS 13 DX13260" >/dev/null
 [[ -e $drop_in && $(<"$log") == $'rebuild\nstate set reboot-required' ]] ||
