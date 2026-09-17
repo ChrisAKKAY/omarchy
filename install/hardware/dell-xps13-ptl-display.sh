@@ -7,8 +7,8 @@
 # PSR_ERROR_STATUS bit 1) in both selective-update modes: a bright line down
 # the right edge, horizontal white flashes during content updates, and a laggy
 # hardware cursor. Only PSR1 is clean, so force it. Both parameters are needed:
-# without the second the driver falls back to PSR2 selective update, which
-# fails the same way.
+# with Panel Replay alone disabled the driver falls back to PSR2 selective
+# update, which fails the same way.
 #
 # Respect an existing manual PSR choice rather than stacking flags on it. The
 # ISO pins the command line in /etc/default/limine, so look there as well.

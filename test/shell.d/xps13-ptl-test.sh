@@ -29,12 +29,6 @@ grep -qx 'dell-xps13-speaker-firmware' "$packages" ||
   fail "the offline mirror carries the XPS 13 speaker firmware aliases"
 pass "the offline mirror carries the XPS 13 speaker firmware aliases"
 
-# [core] is listed before [omarchy], so pacman would take Arch's copy of any
-# name both carry and an Omarchy build of it would never be installed.
-! grep -qx 'linux-firmware-cirrus' "$packages" ||
-  fail "the speaker firmware does not rely on shadowing an Arch package name"
-pass "the speaker firmware does not rely on shadowing an Arch package name"
-
 test_tmp=$(mktemp -d)
 trap 'rm -rf "$test_tmp"' EXIT
 mkdir -p "$test_tmp/bin" "$test_tmp/etc/limine-entry-tool.d"

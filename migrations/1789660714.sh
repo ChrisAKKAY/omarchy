@@ -4,7 +4,7 @@ echo "Force PSR1 on the Dell XPS 13 DX13260 display and install its speaker firm
 # both Panel Replay and PSR2 selective-update modes (edge line, flashes,
 # cursor lag); the hardware leaf writes a Limine drop-in forcing PSR1. Its
 # CS35L56 amplifiers are silent until their firmware aliases are installed,
-# and only load firmware on a cold boot.
+# and ask for firmware when the driver probes, so both repairs need a reboot.
 
 omarchy-hw-dell-xps13-dx13260-ptl || exit 0
 
