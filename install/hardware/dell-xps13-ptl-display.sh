@@ -17,7 +17,7 @@ DROP_IN_DIR="${OMARCHY_LIMINE_DROP_IN_DIR:-/etc/limine-entry-tool.d}"
 DROP_IN="$DROP_IN_DIR/dell-xps13-dx13260-display.conf"
 LIMINE_CONF="${OMARCHY_LIMINE_CONF:-/etc/default/limine}"
 
-if omarchy-hw-dell-xps13-dx13260; then
+if omarchy-hw-dell-xps13-dx13260-ptl; then
   if [[ ! -f $DROP_IN ]] &&
     grep -qs '^[^#]*xe\.enable_psr' "$LIMINE_CONF" "$DROP_IN_DIR"/*.conf; then
     : # a manual PSR setting is already in place; leave it alone

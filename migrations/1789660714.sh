@@ -7,12 +7,12 @@ echo "Force PSR1 on the Dell XPS 13 DX13260 display and pick up its speaker firm
 # upgrade (linux-firmware-cirrus) but only takes effect on a cold boot, so the
 # same reboot covers both.
 
-omarchy-hw-dell-xps13-dx13260 || exit 0
+omarchy-hw-dell-xps13-dx13260-ptl || exit 0
 
 running_cmdline="${OMARCHY_RUNNING_CMDLINE:-/proc/cmdline}"
 rebuild_marker="${OMARCHY_XPS13_DISPLAY_REBUILD_MARKER:-/var/lib/omarchy/migrations/1789660714}"
 
-source "$OMARCHY_PATH/install/hardware/dell-xps13-display.sh"
+source "$OMARCHY_PATH/install/hardware/dell-xps13-ptl-display.sh"
 
 # The running kernel keeps the old command line until reboot, so a marker
 # records the machine-wide rebuild: another user's run before then still needs

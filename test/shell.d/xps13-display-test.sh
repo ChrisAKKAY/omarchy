@@ -4,16 +4,16 @@ set -euo pipefail
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
-detector="$ROOT/bin/omarchy-hw-dell-xps13-dx13260"
-leaf="$ROOT/install/hardware/dell-xps13-display.sh"
+detector="$ROOT/bin/omarchy-hw-dell-xps13-dx13260-ptl"
+leaf="$ROOT/install/hardware/dell-xps13-ptl-display.sh"
 all="$ROOT/install/hardware/all.sh"
 packages="$ROOT/install/omarchy-other.packages"
-migration=$(grep -l "dell-xps13-display.sh" "$ROOT"/migrations/*.sh | head -1)
+migration=$(grep -l "dell-xps13-ptl-display.sh" "$ROOT"/migrations/*.sh | head -1)
 
 [[ -x $detector ]] || fail "the DX13260 detector exists and is executable"
 pass "the DX13260 detector exists and is executable"
 
-grep -q 'run_logged .*hardware/dell-xps13-display.sh' "$all" ||
+grep -q 'run_logged .*hardware/dell-xps13-ptl-display.sh' "$all" ||
   fail "the XPS 13 display fix runs during hardware setup"
 pass "the XPS 13 display fix runs during hardware setup"
 
