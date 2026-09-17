@@ -11,8 +11,8 @@ omarchy-hw-dell-xps13-dx13260-ptl || exit 0
 firmware_pending="${OMARCHY_XPS13_FIRMWARE_PENDING:-/run/omarchy/dell-xps13-speaker-firmware-pending}"
 
 if omarchy-pkg-missing dell-xps13-speaker-firmware; then
-  source "$OMARCHY_PATH/install/hardware/dell-xps13-ptl-speaker-firmware.sh"
   sudo install -Dm644 /dev/null "$firmware_pending"
+  source "$OMARCHY_PATH/install/hardware/dell-xps13-ptl-speaker-firmware.sh"
 fi
 
 # /run does not survive the reboot that loads the firmware, so every user who

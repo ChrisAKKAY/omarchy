@@ -150,7 +150,7 @@ run_migration() {
     OMARCHY_LIMINE_CONF="$limine_conf" \
     OMARCHY_RUNNING_CMDLINE="$cmdline" \
     OMARCHY_XPS13_DISPLAY_REBUILD_MARKER="$marker" \
-    OMARCHY_XPS13_FIRMWARE_PENDING="$firmware_pending" \
+    OMARCHY_XPS13_FIRMWARE_PENDING="${TEST_FIRMWARE_PENDING:-$firmware_pending}" \
     bash -euo pipefail "$migration"
 }
 
@@ -180,6 +180,15 @@ echo "quiet splash" >"$cmdline"
 run_migration "XPS 9350" >/dev/null
 [[ ! -e $drop_in && ! -s $log ]] || fail "the migration leaves other machines alone"
 pass "the migration leaves other machines alone"
+
+# The reboot marker comes first: a run that installed the package and then
+# failed to record it would retry into a machine that never asks for the reboot.
+echo 'KERNEL_CMDLINE[default]+=" xe.enable_psr=0"' >"$limine_conf"
+if TEST_FIRMWARE_PENDING="$cmdline/not-a-directory" run_migration "XPS 13 DX13260" &>/dev/null; then
+  fail "a migration that cannot record the pending reboot does not complete"
+fi
+[[ -z $(ls -A "$pkg_db") ]] || fail "a run that cannot record the pending reboot installs nothing"
+pass "a run that cannot record the pending reboot installs nothing"
 
 # A manual PSR setting keeps the display repair away; the speakers still need
 # their firmware and the reboot that loads it.
