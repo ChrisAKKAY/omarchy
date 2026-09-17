@@ -8,8 +8,16 @@ echo "Force PSR1 on the Dell XPS 13 DX13260 display and install its speaker firm
 
 omarchy-hw-dell-xps13-dx13260-ptl || exit 0
 
+firmware_pending="${OMARCHY_XPS13_FIRMWARE_PENDING:-/run/omarchy/dell-xps13-speaker-firmware-pending}"
+
 if omarchy-pkg-missing dell-xps13-speaker-firmware; then
   source "$OMARCHY_PATH/install/hardware/dell-xps13-ptl-speaker-firmware.sh"
+  sudo install -Dm644 /dev/null "$firmware_pending"
+fi
+
+# /run does not survive the reboot that loads the firmware, so every user who
+# migrates before it is asked, not only the one whose run installed the package.
+if [[ -e $firmware_pending ]]; then
   omarchy-state set reboot-required
 fi
 

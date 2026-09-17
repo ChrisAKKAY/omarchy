@@ -140,6 +140,7 @@ pkg_db="$test_tmp/pkg-db"
 mkdir -p "$pkg_db"
 marker="$test_tmp/var/migration-marker"
 cmdline="$test_tmp/cmdline"
+firmware_pending="$test_tmp/run/firmware-pending"
 
 run_migration() {
   : >"$log"
@@ -149,6 +150,7 @@ run_migration() {
     OMARCHY_LIMINE_CONF="$limine_conf" \
     OMARCHY_RUNNING_CMDLINE="$cmdline" \
     OMARCHY_XPS13_DISPLAY_REBUILD_MARKER="$marker" \
+    OMARCHY_XPS13_FIRMWARE_PENDING="$firmware_pending" \
     bash -euo pipefail "$migration"
 }
 
@@ -188,8 +190,14 @@ run_migration "XPS 13 DX13260" >/dev/null
 pass "the migration installs the speaker firmware aliases and asks for a reboot"
 
 run_migration "XPS 13 DX13260" >/dev/null
-[[ ! -s $log ]] || fail "installed speaker firmware aliases are not installed again"
-pass "installed speaker firmware aliases are not installed again"
+[[ $(<"$log") == "state set reboot-required" ]] ||
+  fail "a second user before the reboot is asked to reboot for the firmware without a reinstall"
+pass "a second user before the reboot is asked to reboot for the firmware without a reinstall"
+
+rm -f "$firmware_pending"
+run_migration "XPS 13 DX13260" >/dev/null
+[[ ! -s $log ]] || fail "a machine rebooted with the firmware installed is left alone"
+pass "a machine rebooted with the firmware installed is left alone"
 rm -f "$limine_conf"
 
 TEST_MISSING_COMMAND=limine-mkinitcpio run_migration "XPS 13 DX13260" >/dev/null
