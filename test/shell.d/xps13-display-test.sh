@@ -34,7 +34,7 @@ cat >"$test_tmp/bin/omarchy-hw-match" <<'SH'
 SH
 cat >"$test_tmp/bin/omarchy-hw-intel-ptl" <<'SH'
 #!/bin/bash
-[[ ${TEST_INTEL_PTL:-0} == 1 ]]
+[[ ${TEST_INTEL_PTL:-0} == "1" ]]
 SH
 cat >"$test_tmp/bin/sudo" <<'SH'
 #!/bin/bash
@@ -48,6 +48,7 @@ run_leaf() {
     export PATH="$test_tmp/bin:$PATH"
     export TEST_PRODUCT_NAME="$1" TEST_INTEL_PTL="$2"
     export OMARCHY_LIMINE_DROP_IN_DIR="$test_tmp/etc/limine-entry-tool.d"
+    export OMARCHY_LIMINE_CONF="$test_tmp/etc/default/limine"
     # shellcheck disable=SC1090
     source "$leaf"
   )
@@ -74,9 +75,93 @@ run_leaf "XPS 13 DX13260" 1
 [[ ! -e $drop_in ]] || fail "an existing manual PSR setting is respected"
 pass "an existing manual PSR setting is respected"
 rm -f "$test_tmp/etc/limine-entry-tool.d/manual.conf"
+
+mkdir -p "$test_tmp/etc/default"
+limine_conf="$test_tmp/etc/default/limine"
+echo 'KERNEL_CMDLINE[default]+=" root=/dev/mapper/root xe.enable_psr=0"' >"$limine_conf"
 run_leaf "XPS 13 DX13260" 1
+[[ ! -e $drop_in ]] || fail "a manual PSR setting in /etc/default/limine is respected"
+pass "a manual PSR setting in /etc/default/limine is respected"
+
+echo '# KERNEL_CMDLINE[default]+=" xe.enable_psr=0"' >"$limine_conf"
+run_leaf "XPS 13 DX13260" 1
+[[ -e $drop_in ]] || fail "a commented-out PSR setting does not suppress the fix"
+pass "a commented-out PSR setting does not suppress the fix"
+rm -f "$limine_conf"
 
 before=$(md5sum "$drop_in")
 run_leaf "XPS 13 DX13260" 1
 [[ $before == "$(md5sum "$drop_in")" ]] || fail "re-running the leaf is idempotent"
 pass "re-running the leaf is idempotent"
+
+echo 'KERNEL_CMDLINE[default]+=" xe.enable_panel_replay=0"' >"$drop_in"
+run_leaf "XPS 13 DX13260" 1
+grep -q 'xe.enable_psr2_sel_fetch=0 xe.enable_panel_replay=0' "$drop_in" ||
+  fail "a drop-in carrying only one of the two flags is completed"
+pass "a drop-in carrying only one of the two flags is completed"
+
+# The migration, run the way omarchy-migrate runs it.
+cat >"$test_tmp/bin/omarchy-cmd-present" <<'SH'
+#!/bin/bash
+command -v "$1" >/dev/null
+SH
+cat >"$test_tmp/bin/limine-mkinitcpio" <<'SH'
+#!/bin/bash
+echo rebuild >>"$TEST_LOG"
+SH
+cat >"$test_tmp/bin/omarchy-state" <<'SH'
+#!/bin/bash
+echo "state $*" >>"$TEST_LOG"
+SH
+chmod +x "$test_tmp"/bin/*
+
+log="$test_tmp/log"
+marker="$test_tmp/var/migration-marker"
+cmdline="$test_tmp/cmdline"
+
+run_migration() {
+  : >"$log"
+  PATH="$test_tmp/bin:$PATH" TEST_LOG="$log" OMARCHY_PATH="$ROOT" \
+    TEST_PRODUCT_NAME="$1" TEST_INTEL_PTL=1 \
+    OMARCHY_LIMINE_DROP_IN_DIR="$test_tmp/etc/limine-entry-tool.d" \
+    OMARCHY_LIMINE_CONF="$limine_conf" \
+    OMARCHY_RUNNING_CMDLINE="$cmdline" \
+    OMARCHY_XPS13_DISPLAY_REBUILD_MARKER="$marker" \
+    bash -euo pipefail "$migration"
+}
+
+rm -f "$drop_in"
+echo "quiet splash" >"$cmdline"
+
+run_migration "XPS 9350" >/dev/null
+[[ ! -e $drop_in && ! -s $log ]] || fail "the migration leaves other machines alone"
+pass "the migration leaves other machines alone"
+
+run_migration "XPS 13 DX13260" >/dev/null
+[[ -e $drop_in && $(<"$log") == $'rebuild\nstate set reboot-required' ]] ||
+  fail "the migration writes the drop-in, rebuilds the boot image and asks for a reboot"
+pass "the migration writes the drop-in, rebuilds the boot image and asks for a reboot"
+
+run_migration "XPS 13 DX13260" >/dev/null
+[[ $(<"$log") == "state set reboot-required" ]] ||
+  fail "a second user before the reboot is asked to reboot without a second rebuild"
+pass "a second user before the reboot is asked to reboot without a second rebuild"
+
+rm -f "$marker"
+echo "quiet xe.enable_panel_replay=0 splash" >"$cmdline"
+run_migration "XPS 13 DX13260" >/dev/null
+[[ $(<"$log") == $'rebuild\nstate set reboot-required' ]] ||
+  fail "a booted command line with only one of the two flags still gets the rebuild"
+pass "a booted command line with only one of the two flags still gets the rebuild"
+
+echo "quiet xe.enable_psr2_sel_fetch=0 xe.enable_panel_replay=0 splash" >"$cmdline"
+run_migration "XPS 13 DX13260" >/dev/null
+[[ ! -s $log ]] || fail "a machine already booted with both flags is left alone"
+pass "a machine already booted with both flags is left alone"
+
+rm -f "$drop_in" "$marker"
+echo "quiet splash xe.enable_psr=0" >"$cmdline"
+echo 'KERNEL_CMDLINE[default]+=" xe.enable_psr=0"' >"$limine_conf"
+run_migration "XPS 13 DX13260" >/dev/null
+[[ ! -e $drop_in && ! -s $log ]] || fail "the migration leaves a manual PSR setting alone"
+pass "the migration leaves a manual PSR setting alone"

@@ -10,18 +10,20 @@
 # without the second the driver falls back to PSR2 selective update, which
 # fails the same way.
 #
-# Respect an existing manual PSR choice rather than stacking flags on it.
+# Respect an existing manual PSR choice rather than stacking flags on it. The
+# ISO pins the command line in /etc/default/limine, so look there as well.
 
 DROP_IN_DIR="${OMARCHY_LIMINE_DROP_IN_DIR:-/etc/limine-entry-tool.d}"
 DROP_IN="$DROP_IN_DIR/dell-xps13-dx13260-display.conf"
+LIMINE_CONF="${OMARCHY_LIMINE_CONF:-/etc/default/limine}"
 
 if omarchy-hw-dell-xps13-dx13260; then
-  if grep -qs 'xe\.enable_psr' "$DROP_IN_DIR"/*.conf 2>/dev/null &&
-    [[ ! -f $DROP_IN ]]; then
+  if [[ ! -f $DROP_IN ]] &&
+    grep -qs '^[^#]*xe\.enable_psr' "$LIMINE_CONF" "$DROP_IN_DIR"/*.conf; then
     : # a manual PSR setting is already in place; leave it alone
-  elif [[ ! -f $DROP_IN ]] || ! grep -q 'xe.enable_panel_replay=0' "$DROP_IN"; then
+  elif ! grep -qs '^KERNEL_CMDLINE.*xe\.enable_psr2_sel_fetch=0 xe\.enable_panel_replay=0' "$DROP_IN"; then
     sudo mkdir -p "$DROP_IN_DIR"
-    cat <<EOF2 | sudo tee "$DROP_IN" >/dev/null
+    cat <<'EOF2' | sudo tee "$DROP_IN" >/dev/null
 # Dell XPS 13 DX13260 (Panther Lake / Xe3) display workaround: force PSR1.
 # Panel Replay and PSR2 selective update both raise RFB storage errors on the
 # Sharp SHP5597 panel (right-edge line, horizontal flashes, cursor lag).
