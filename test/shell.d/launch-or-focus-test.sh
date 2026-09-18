@@ -66,6 +66,7 @@ assert_args '"a\"b"' '[a"b]'
 assert_args "printf '%s' '\$(date)'" "[printf] [%s] [\$(date)]"
 assert_args "omarchy-launch-webapp 'https://example.com/#section'" "[omarchy-launch-webapp] [https://example.com/#section]"
 assert_args "foo#bar" "[foo#bar]"
+assert_args 'nautilus /tmp/My\ #Folder' "[nautilus] [/tmp/My #Folder]"
 
 assert_refused "foot; touch $sandbox_dir/pwned"
 assert_refused "foot && touch $sandbox_dir/pwned"
