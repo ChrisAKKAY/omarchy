@@ -29,7 +29,6 @@ launch_command_is_safe() {
       "\\")
         if [[ $quote != single ]]; then
           if (( i + 1 < ${#s} )) && [[ ${s:i+1:1} == $'\n' ]]; then
-            word_start=1
             continuation=1
           else
             word_start=0
