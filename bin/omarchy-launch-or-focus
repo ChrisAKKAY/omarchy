@@ -27,12 +27,16 @@ launch_command_is_safe() {
         fi
         ;;
       "\\")
-        (( i++ ))
+        if [[ $quote != single ]]; then
+          (( i++ ))
+        fi
         ;;
       '$')
-        (( i + 1 < ${#s} )) || return 1
-        next=${s:i+1:1}
-        [[ $next == [A-Za-z0-9_] ]] || return 1
+        if [[ $quote != single ]]; then
+          (( i + 1 < ${#s} )) || return 1
+          next=${s:i+1:1}
+          [[ $next == [A-Za-z0-9_] ]] || return 1
+        fi
         ;;
       '`')
         [[ $quote == single ]] || return 1
@@ -63,6 +67,9 @@ else
     echo "Refusing to launch: $LAUNCH_COMMAND contains unquoted shell syntax that could execute code" >&2
     exit 1
   }
-  eval "set -- $LAUNCH_COMMAND"
+  if ! eval "set -- $LAUNCH_COMMAND"; then
+    echo "Refusing to launch: $LAUNCH_COMMAND could not be parsed" >&2
+    exit 1
+  fi
   exec setsid "$@"
 fi

@@ -63,6 +63,7 @@ assert_args "uwsm-app -- 'it'\\''s'" "[uwsm-app] [--] [it's]"
 assert_args 'nautilus "$HOME/Documents"' "[nautilus] [$HOME/Documents]"
 assert_args "foo ~/Documents" "[foo] [$HOME/Documents]"
 assert_args '"a\"b"' '[a"b]'
+assert_args "printf '%s' '\$(date)'" "[printf] [%s] [\$(date)]"
 
 assert_refused "foot; touch $sandbox_dir/pwned"
 assert_refused "foot && touch $sandbox_dir/pwned"
@@ -71,6 +72,7 @@ assert_refused 'foot `touch /tmp/pwned`'
 assert_refused 'foot | tee /tmp/pwned'
 assert_refused '${HOME}'
 assert_refused "cmd valid-arg 'unterminated"
+assert_refused "printf '\\'; touch /tmp/pwned # "
 
 [[ ! -e $sandbox_dir/pwned ]] || fail "a refused launch command never runs"
 pass "refused launch commands execute nothing"
