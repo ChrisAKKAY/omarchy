@@ -73,6 +73,7 @@ assert_refused 'foot | tee /tmp/pwned'
 assert_refused '${HOME}'
 assert_refused "cmd valid-arg 'unterminated"
 assert_refused "printf '\\'; touch /tmp/pwned # "
+assert_refused $'printf # \'\nprintf INJECTED # \''
 
 [[ ! -e $sandbox_dir/pwned ]] || fail "a refused launch command never runs"
 pass "refused launch commands execute nothing"

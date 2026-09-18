@@ -41,7 +41,7 @@ launch_command_is_safe() {
       '`')
         [[ $quote == single ]] || return 1
         ;;
-      ';'|'|'|'&'|'('|')'|'<'|'>'|$'\n')
+      ';'|'|'|'&'|'('|')'|'<'|'>'|'#'|$'\n')
         [[ -n $quote ]] || return 1
         ;;
     esac
