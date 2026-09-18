@@ -15,5 +15,6 @@ WINDOW_ADDRESS=$(hyprctl clients -j | jq -r --arg p "$WINDOW_PATTERN" '.[]|selec
 if [[ -n $WINDOW_ADDRESS ]]; then
   hyprctl dispatch "hl.dsp.focus({ window = \"address:$WINDOW_ADDRESS\" })" >/dev/null 2>&1 || hyprctl dispatch focuswindow "address:$WINDOW_ADDRESS"
 else
-  eval exec setsid $LAUNCH_COMMAND
+  mapfile -t launch_args < <(printf '%s' "$LAUNCH_COMMAND" | xargs -r -- printf '%s\n')
+  exec setsid "${launch_args[@]}"
 fi
