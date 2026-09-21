@@ -50,6 +50,7 @@ done
 if [[ -x /usr/lib/openclaw/bootstrap ]]; then
   /usr/lib/openclaw/bootstrap --remove
 fi
+rm -f "$HOME/.local/state/omarchy/openclaw-runtime-migration"
 omarchy-pkg-drop openclaw
 
 # The web app launcher and icon omarchy-install-ai-openclaw created.

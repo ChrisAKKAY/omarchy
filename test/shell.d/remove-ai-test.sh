@@ -242,13 +242,15 @@ chmod +x "$tmp_dir/bin/openclaw"
 fresh_openclaw_home() {
   fresh_home
   mkdir -p "$HOME/.config/systemd/user/default.target.wants" "$HOME/.openclaw" \
-    "$HOME/.local/share/applications" "$HOME/.local/share/icons/hicolor/256x256/apps"
+    "$HOME/.local/share/applications" "$HOME/.local/share/icons/hicolor/256x256/apps" \
+    "$HOME/.local/state/omarchy"
   touch "$HOME/.config/systemd/user/openclaw-gateway.service" \
     "$HOME/.config/systemd/user/openclaw-gateway.service.bak" \
     "$HOME/.config/systemd/user/openclaw-node.service" \
     "$HOME/.openclaw/openclaw.json" \
     "$HOME/.local/share/applications/OpenClaw.desktop" \
-    "$HOME/.local/share/icons/hicolor/256x256/apps/openclaw.png"
+    "$HOME/.local/share/icons/hicolor/256x256/apps/openclaw.png" \
+    "$HOME/.local/state/omarchy/openclaw-runtime-migration"
   ln -s ../openclaw-gateway.service \
     "$HOME/.config/systemd/user/default.target.wants/openclaw-gateway.service"
   ln -s ../openclaw-node.service \
@@ -277,6 +279,8 @@ for gone in .config/systemd/user/openclaw-gateway.service \
   [[ ! -e $HOME/$gone && ! -L $HOME/$gone ]] || fail "OpenClaw removal deletes the service and launcher it installed" "$gone"
 done
 pass "OpenClaw removal deletes the service and launcher it installed"
+[[ ! -e $HOME/.local/state/omarchy/openclaw-runtime-migration ]] || fail "OpenClaw removal clears stale migration state"
+pass "OpenClaw removal clears stale migration state"
 
 grep -q '^systemctl:--user disable --now openclaw-gateway.service$' "$TEST_LOG" ||
   fail "OpenClaw removal stops the gateway service"
@@ -356,6 +360,8 @@ drop_calls_after=$(grep -c '^drop:openclaw$' "$TEST_LOG" || true)
 [[ $drop_calls_before == "$drop_calls_after" ]] ||
   fail "OpenClaw removal aborts when the gateway cannot be stopped" "package dropped anyway"
 pass "OpenClaw removal aborts when the gateway cannot be stopped"
+[[ -e $HOME/.local/state/omarchy/openclaw-runtime-migration ]] || fail "aborted OpenClaw removal preserves migration state"
+pass "aborted OpenClaw removal preserves migration state"
 
 # An unreachable user manager is not a stopped gateway: every probe failing
 # with no answer must still abort, not read as "confirmed inactive".
