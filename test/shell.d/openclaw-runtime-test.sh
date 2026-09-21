@@ -92,6 +92,10 @@ sed -n '/^openclaw:/p' "$TEST_LOG" > "$test_dir/actual"
 printf '%s\n' 'openclaw:gateway install --force' 'openclaw:gateway status --json' > "$test_dir/expected"
 cmp "$test_dir/actual" "$test_dir/expected" || fail "migration rebinds and verifies legacy gateway"
 pass "legacy gateway is rebound and verified"
+grep -E '^(systemctl:--user stop|openclaw:gateway install)' "$TEST_LOG" > "$test_dir/stop-order"
+printf '%s\n' 'systemctl:--user stop openclaw-gateway.service' 'openclaw:gateway install --force' > "$test_dir/expected-stop-order"
+cmp "$test_dir/stop-order" "$test_dir/expected-stop-order" || fail "legacy Gateway releases state before new CLI starts"
+pass "legacy Gateway is stopped before state migration"
 
 sed -i "s|$HOME/.local/share/openclaw/runtime/lib/node_modules/openclaw|/usr/lib/node_modules/openclaw|g" "$unit"
 : > "$TEST_LOG"
@@ -120,7 +124,7 @@ sed -i "s|$HOME/.local/share/openclaw/runtime/lib/node_modules/openclaw|/usr/lib
 : > "$TEST_LOG"
 if TEST_ACTIVE_STATE=failed TEST_GATEWAY_READY=false omarchy-install-openclaw-cli --migrate >/dev/null 2>&1; then fail "enabled failed service requires health recovery"; fi
 grep -qx 'true true' "$HOME/.local/state/omarchy/openclaw-runtime-migration" || fail "enabled failed service is intended to run"
-! grep -qx 'systemctl:--user stop openclaw-gateway.service' "$TEST_LOG" || fail "enabled failed service must not be stopped after repair"
+[[ $(grep -cx 'systemctl:--user stop openclaw-gateway.service' "$TEST_LOG") == 1 ]] || fail "enabled failed service must not be stopped after repair"
 omarchy-install-openclaw-cli --migrate
 pass "enabled failed Gateway is recovered and health checked"
 

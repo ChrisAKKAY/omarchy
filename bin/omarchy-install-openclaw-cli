@@ -73,6 +73,9 @@ case "${1:---now}" in
       echo "Invalid OpenClaw migration state at $pending; inspect it before retrying." >&2
       exit 1
     fi
+    # The new CLI may migrate state before installing its unit. The legacy
+    # Gateway must release its database lease before that can happen.
+    systemctl --user stop openclaw-gateway.service
     /usr/bin/openclaw gateway install --force
     if [[ $enabled == false ]]; then
       systemctl --user disable openclaw-gateway.service
