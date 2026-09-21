@@ -224,6 +224,10 @@ pass "Ollama removal is offered only where the package is installed"
 # OpenClaw's gateway unit and web app launcher are the app's own; the agent
 # state in ~/.openclaw is the user's. systemctl and openclaw are stubbed so the
 # sandbox never reaches the real user manager or a real gateway.
+openclaw_remover="$tmp_dir/openclaw-remover"
+sed "s|/usr/lib/openclaw/bootstrap|$tmp_dir/bootstrap|g" \
+  "$ROOT/bin/omarchy-remove-ai-openclaw" > "$openclaw_remover"
+chmod +x "$openclaw_remover"
 cat >"$tmp_dir/bin/systemctl" <<'SCRIPT'
 #!/bin/bash
 printf 'systemctl:%s\n' "$*" >>"$TEST_LOG"
@@ -267,7 +271,7 @@ SCRIPT
 chmod +x "$tmp_dir/bin/gum"
 
 fresh_openclaw_home
-"$ROOT/bin/omarchy-remove-ai-openclaw" >/dev/null
+"$openclaw_remover" >/dev/null
 
 for gone in .config/systemd/user/openclaw-gateway.service \
   .config/systemd/user/openclaw-gateway.service.bak \
@@ -311,7 +315,7 @@ chmod +x "$tmp_dir/bin/openclaw"
 
 : >"$TEST_LOG"
 fresh_openclaw_home
-"$ROOT/bin/omarchy-remove-ai-openclaw" >/dev/null
+"$openclaw_remover" >/dev/null
 
 grep -q '^openclaw:gateway uninstall$' "$TEST_LOG" ||
   fail "OpenClaw removal prefers upstream's own gateway teardown"
@@ -324,12 +328,25 @@ pass "OpenClaw removal prefers upstream's own gateway teardown"
 # Without the unit file there is nothing of ours registered, so systemd stays untouched.
 systemctl_calls_before=$(grep -c '^systemctl:' "$TEST_LOG" || true)
 fresh_home
-"$ROOT/bin/omarchy-remove-ai-openclaw" >/dev/null
+"$openclaw_remover" >/dev/null
 systemctl_calls_after=$(grep -c '^systemctl:' "$TEST_LOG" || true)
 
 [[ $systemctl_calls_before == "$systemctl_calls_after" ]] ||
   fail "OpenClaw removal leaves systemd alone when onboarding never ran"
 pass "OpenClaw removal leaves systemd alone when onboarding never ran"
+
+cat > "$tmp_dir/bootstrap" <<'SCRIPT'
+#!/bin/bash
+exit 7
+SCRIPT
+chmod +x "$tmp_dir/bootstrap"
+fresh_openclaw_home
+drop_calls_before=$(grep -c '^drop:openclaw$' "$TEST_LOG" || true)
+if "$openclaw_remover" >/dev/null 2>&1; then fail "runtime removal failure must abort uninstall"; fi
+[[ -e $HOME/.local/state/omarchy/openclaw-runtime-migration ]] || fail "runtime removal failure preserves migration state"
+[[ $(grep -c '^drop:openclaw$' "$TEST_LOG" || true) == "$drop_calls_before" ]] || fail "runtime removal failure preserves package"
+chmod -x "$tmp_dir/bootstrap"
+pass "runtime removal failure preserves migration state and package"
 
 # A gateway that will not stop aborts the removal before the package drop:
 # pacman would otherwise strand the live process on deleted code.
@@ -351,7 +368,7 @@ chmod +x "$tmp_dir/bin/systemctl"
 drop_calls_before=$(grep -c '^drop:openclaw$' "$TEST_LOG" || true)
 fresh_openclaw_home
 rc=0
-"$ROOT/bin/omarchy-remove-ai-openclaw" >/dev/null 2>&1 || rc=$?
+"$openclaw_remover" >/dev/null 2>&1 || rc=$?
 drop_calls_after=$(grep -c '^drop:openclaw$' "$TEST_LOG" || true)
 
 [[ $rc != 0 ]] || fail "OpenClaw removal aborts when the gateway cannot be stopped"
@@ -376,7 +393,7 @@ chmod +x "$tmp_dir/bin/systemctl"
 : >"$TEST_LOG"
 fresh_openclaw_home
 rc=0
-"$ROOT/bin/omarchy-remove-ai-openclaw" >/dev/null 2>&1 || rc=$?
+"$openclaw_remover" >/dev/null 2>&1 || rc=$?
 
 [[ $rc != 0 ]] || fail "OpenClaw removal aborts when systemd cannot be reached"
 [[ -f $HOME/.config/systemd/user/openclaw-gateway.service ]] ||
