@@ -1,29 +1,104 @@
 #!/bin/bash
 
-# omarchy:summary=Ensure the OpenClaw CLI is installed for the default agent
-# omarchy:args=[--check|--now]
+# omarchy:summary=Set up OpenClaw's self-updating user runtime
+# omarchy:args=[--check|--now|--migrate]
 # omarchy:requires-sudo=true
-
-# OpenClaw is not a mise tool: the openclaw pacman package is the one OpenClaw
-# installation on the machine — the CLI, the gateway, and the Install > AI web
-# app all share it, and the fast ring keeps it current. The default-agent flow
-# talks to that package through the same --check/--now contract mise-backed
-# agents get from mise itself.
 
 set -euo pipefail
 
+bootstrap=/usr/lib/openclaw/bootstrap
+
 case "${1:---now}" in
 --check)
-  omarchy-pkg-present openclaw
+  [[ -x $bootstrap ]] && "$bootstrap" --check
   ;;
---now)
-  if ! omarchy-pkg-present openclaw; then
-    echo "Installing OpenClaw..."
+--now|--migrate)
+  if [[ ${1:-} == "--migrate" ]] && ! omarchy-pkg-present openclaw; then
+    exit 0
+  fi
+  if ! [[ -x $bootstrap ]]; then
+    echo "Installing the OpenClaw launcher..."
     omarchy-pkg-add openclaw
+  fi
+  if ! [[ -x $bootstrap ]]; then
+    echo "The OpenClaw bootstrap package is required. Update Omarchy's packages and retry." >&2
+    exit 1
+  fi
+
+  "$bootstrap" --install
+
+  unit_dir="$HOME/.config/systemd/user"
+  unit="$unit_dir/openclaw-gateway.service"
+  pending="$HOME/.local/state/omarchy/openclaw-runtime-migration"
+  legacy_pattern='^ExecStart=.* /usr/lib/node_modules/openclaw/(dist/index\.js|openclaw\.mjs)( |$)'
+  shopt -s nullglob
+  for other_unit in "$unit_dir"/openclaw*.service; do
+    if [[ $other_unit != "$unit" ]] && grep -qE "$legacy_pattern" "$other_unit"; then
+      echo "Migrate $other_unit to the new OpenClaw runtime with its existing host/profile settings, then retry." >&2
+      exit 1
+    fi
+  done
+
+  if [[ -f $unit ]] && grep -qE "$legacy_pattern" "$unit"; then
+    if ! grep -qxF 'Environment=OPENCLAW_SERVICE_KIND=gateway' "$unit"; then
+      echo "OpenClaw has a custom legacy Gateway service. Migrate it with the new user runtime before continuing." >&2
+      exit 1
+    fi
+    if ! [[ -e $pending ]]; then
+      enabled=false
+      running=false
+      enabled_state=$(systemctl --user is-enabled openclaw-gateway.service) || true
+      running_state=$(systemctl --user is-active openclaw-gateway.service) || true
+      case "$enabled_state" in
+        enabled|enabled-runtime) enabled=true ;;
+        disabled) ;;
+        *) echo "Cannot determine OpenClaw service enablement; retry when the user manager is available." >&2; exit 1 ;;
+      esac
+      case "$running_state" in
+        active) running=true ;;
+        inactive|failed) ;;
+        *) echo "Cannot determine OpenClaw service activity; retry when the user manager is available." >&2; exit 1 ;;
+      esac
+      mkdir -p "$(dirname "$pending")"
+      printf '%s %s\n' "$enabled" "$running" > "$pending"
+    fi
+  fi
+
+  # Keep the retry marker until the new service identity and desired state are
+  # verified; rewriting the legacy unit alone is not a completed migration.
+  if [[ -f $pending ]]; then
+    read -r enabled running < "$pending"
+    if [[ $enabled != true && $enabled != false ]] || [[ $running != true && $running != false ]]; then
+      echo "Invalid OpenClaw migration state at $pending; inspect it before retrying." >&2
+      exit 1
+    fi
+    /usr/bin/openclaw gateway install --force
+    if [[ $enabled == false ]]; then
+      systemctl --user disable openclaw-gateway.service
+    fi
+    if [[ $running == false ]]; then
+      systemctl --user stop openclaw-gateway.service
+    fi
+    prefix=$("$bootstrap" --prefix)
+    ready=false
+    for _ in {1..30}; do
+      if timeout 10 /usr/bin/openclaw gateway status --json | jq -e \
+        --arg entry "$prefix/lib/node_modules/openclaw/dist/index.js" --argjson running "$running" \
+        'any(.service.command.programArguments[]?; . == $entry) and (($running | not) or .rpc.ok == true)' >/dev/null; then
+        ready=true
+        break
+      fi
+      sleep 1
+    done
+    if [[ $ready != true ]]; then
+      echo "OpenClaw's migrated Gateway could not be verified. Run: openclaw gateway status" >&2
+      exit 1
+    fi
+    rm "$pending"
   fi
   ;;
 *)
-  echo "Usage: omarchy-install-openclaw-cli [--check|--now]" >&2
+  echo "Usage: omarchy-install-openclaw-cli [--check|--now|--migrate]" >&2
   exit 1
   ;;
 esac

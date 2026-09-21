@@ -761,8 +761,7 @@ grep -F "missing is not installed" "$test_tmp/missing-output" >/dev/null ||
   fail "agent launcher explains when the default command is missing"
 pass "agent launcher reports a missing default command"
 
-# OpenClaw comes from its pacman package, not mise: choosing it must route
-# through omarchy-install-openclaw-cli and never touch a mise environment.
+# OpenClaw uses a package bootstrap and its own user runtime, not a mise npm tool.
 cat >"$mock_bin/omarchy-pkg-present" <<'SH'
 #!/bin/bash
 [[ $1 == openclaw && ${OMARCHY_TEST_OPENCLAW_INSTALLED:-false} == "true" ]]
@@ -781,6 +780,19 @@ exit 0
 SH
 chmod +x "$mock_bin/omarchy-pkg-present" "$mock_bin/omarchy-pkg-add" \
   "$mock_bin/omarchy-launch-openclaw" "$mock_bin/openclaw"
+
+cat >"$mock_bin/openclaw-bootstrap" <<'SH'
+#!/bin/bash
+if [[ $1 == --check ]]; then
+  [[ ${OMARCHY_TEST_OPENCLAW_INSTALLED:-false} == true ]]
+else
+  printf '%s\n' "bootstrap $*" >>"$OMARCHY_TEST_STUB_LOG"
+fi
+SH
+chmod +x "$mock_bin/openclaw-bootstrap"
+sed "s|/usr/lib/openclaw/bootstrap|$mock_bin/openclaw-bootstrap|g" \
+  "$ROOT/bin/omarchy-install-openclaw-cli" >"$mock_bin/omarchy-install-openclaw-cli"
+chmod +x "$mock_bin/omarchy-install-openclaw-cli"
 
 : >"$launch_log"
 : >"$terminal_log"
@@ -805,12 +817,12 @@ pass "a missing OpenClaw routes through the install terminal"
 : >"$stub_log"
 : >"$inline_log"
 OMARCHY_TEST_OPENCLAW_INSTALLED=false omarchy-default-agent --install openclaw >/dev/null
-grep -Fx "pkg-add openclaw" "$stub_log" >/dev/null ||
-  fail "installing OpenClaw as default agent adds its package"
+grep -Fx "bootstrap --install" "$stub_log" >/dev/null ||
+  fail "installing OpenClaw as default agent prepares its runtime"
 mapfile -d '' -t inline_args <"$inline_log"
 [[ ${inline_args[*]} == "omarchy-launch-openclaw --tui" ]] ||
   fail "installing OpenClaw as default agent hands over to its terminal UI"
-pass "installing OpenClaw as default agent adds its package"
+pass "installing OpenClaw as default agent prepares its runtime"
 
 : >"$launch_log"
 omarchy agent prompt "Review this project"

@@ -52,8 +52,8 @@ agent_package=${agent_package:-$agent}
 
 # Hermes reaches mise through its own installer rather than straight from
 # here: it needs its interpreter pinned, and a bare `mise use` has nowhere to
-# say so. See omarchy-install-hermes-cli. OpenClaw comes from its pacman
-# package the same way; see omarchy-install-openclaw-cli.
+# say so. OpenClaw similarly needs its user runtime bootstrapped before use;
+# see omarchy-install-openclaw-cli.
 if [[ -n ${agent_installer:-} ]]; then
   # Not omarchy-cmd-present: the stub is on PATH from first boot and says
   # nothing about whether Hermes is installed behind it. Treating a cold stub

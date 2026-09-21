@@ -47,6 +47,9 @@ for unit_file in "$unit_dir"/openclaw-gateway.service "$unit_dir"/openclaw-node.
   fi
 done
 
+if [[ -x /usr/lib/openclaw/bootstrap ]]; then
+  /usr/lib/openclaw/bootstrap --remove
+fi
 omarchy-pkg-drop openclaw
 
 # The web app launcher and icon omarchy-install-ai-openclaw created.
