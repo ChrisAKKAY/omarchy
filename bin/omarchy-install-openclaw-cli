@@ -56,7 +56,8 @@ case "${1:---now}" in
       esac
       case "$running_state" in
         active) running=true ;;
-        inactive|failed) ;;
+        failed) running=$enabled ;;
+        inactive) ;;
         *) echo "Cannot determine OpenClaw service activity; retry when the user manager is available." >&2; exit 1 ;;
       esac
       mkdir -p "$(dirname "$pending")"

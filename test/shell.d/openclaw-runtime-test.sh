@@ -53,8 +53,12 @@ cat > "$test_dir/bin/systemctl" <<'STUB'
 printf 'systemctl:%s\n' "$*" >> "$TEST_LOG"
 [[ ${TEST_MANAGER_UNAVAILABLE:-false} != true ]] || exit 1
 case "$*" in
-  *is-enabled*) [[ ${TEST_SERVICE_RUNNING:-true} == true ]] && echo enabled || echo disabled ;;
-  *is-active*) [[ ${TEST_SERVICE_RUNNING:-true} == true ]] && echo active || echo inactive ;;
+  *is-enabled*)
+    if [[ -n ${TEST_ENABLED_STATE:-} ]]; then echo "$TEST_ENABLED_STATE"
+    else [[ ${TEST_SERVICE_RUNNING:-true} == true ]] && echo enabled || echo disabled; fi ;;
+  *is-active*)
+    if [[ -n ${TEST_ACTIVE_STATE:-} ]]; then echo "$TEST_ACTIVE_STATE"
+    else [[ ${TEST_SERVICE_RUNNING:-true} == true ]] && echo active || echo inactive; fi ;;
 esac
 STUB
 printf '#!/bin/bash\nexit 0\n' > "$test_dir/bin/sleep"
@@ -111,6 +115,20 @@ TEST_SERVICE_RUNNING=false TEST_GATEWAY_READY=false omarchy-install-openclaw-cli
 grep -qx 'systemctl:--user disable openclaw-gateway.service' "$TEST_LOG" || fail "disabled service stays disabled"
 grep -qx 'systemctl:--user stop openclaw-gateway.service' "$TEST_LOG" || fail "stopped service stays stopped"
 pass "migration preserves disabled and stopped service state"
+
+sed -i "s|$HOME/.local/share/openclaw/runtime/lib/node_modules/openclaw|/usr/lib/node_modules/openclaw|g" "$unit"
+: > "$TEST_LOG"
+if TEST_ACTIVE_STATE=failed TEST_GATEWAY_READY=false omarchy-install-openclaw-cli --migrate >/dev/null 2>&1; then fail "enabled failed service requires health recovery"; fi
+grep -qx 'true true' "$HOME/.local/state/omarchy/openclaw-runtime-migration" || fail "enabled failed service is intended to run"
+! grep -qx 'systemctl:--user stop openclaw-gateway.service' "$TEST_LOG" || fail "enabled failed service must not be stopped after repair"
+omarchy-install-openclaw-cli --migrate
+pass "enabled failed Gateway is recovered and health checked"
+
+sed -i "s|$HOME/.local/share/openclaw/runtime/lib/node_modules/openclaw|/usr/lib/node_modules/openclaw|g" "$unit"
+: > "$TEST_LOG"
+TEST_ENABLED_STATE=disabled TEST_ACTIVE_STATE=failed TEST_GATEWAY_READY=false omarchy-install-openclaw-cli --migrate
+grep -qx 'systemctl:--user stop openclaw-gateway.service' "$TEST_LOG" || fail "disabled failed service remains stopped"
+pass "disabled failed Gateway remains stopped"
 
 sed -i "s|$HOME/.local/share/openclaw/runtime/lib/node_modules/openclaw|/usr/lib/node_modules/openclaw|g" "$unit"
 sed -i '/OPENCLAW_SERVICE_KIND/d' "$unit"
