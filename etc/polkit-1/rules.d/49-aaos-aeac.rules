@@ -1,0 +1,132 @@
+// AEAC deny-by-default for the AAOS agent runtime. polkit >= 0.106 (JS rules).
+//
+// Subjects: the aaos-c2 daemon user, the aaos-ui group, and the unprivileged user a
+// rootless Podman agent sandbox runs as. For every polkit-mediated action, the answer
+// is NO, and pkexec is refused first and by name.
+//
+// ---------------------------------------------------------------------------
+// READ THIS BEFORE RELYING ON IT. Three things this file is NOT.
+//
+// 1. It is NOT what stops privilege escalation today, and it must not be treated as
+//    the reason escalation is impossible. aaos-c2.service already sets
+//    NoNewPrivileges=true, SecureBits=noroot-locked, CapabilityBoundingSet= (empty)
+//    and RestrictSUIDSGID=true. NoNewPrivileges makes the kernel refuse setuid
+//    execution outright, and pkexec is setuid root, so the exec fails before polkit is
+//    ever consulted. The sandbox container is the same story: --cap-drop=ALL,
+//    --security-opt no-new-privileges, --user 65534:65534. This file is defence in
+//    depth and a legible statement of intent. If anyone ever relaxes the systemd
+//    hardening because "polkit covers it", that is the mistake this paragraph exists
+//    to prevent.
+//
+// 2. It is NOT kernel-level enforcement. polkit is a userspace authority daemon. It
+//    mediates requests that polkit-AWARE privileged services choose to ask it about
+//    (logind, systemd, NetworkManager, udisks, packagekit, pkexec). It cannot
+//    intercept a syscall, and it cannot mediate traffic to a service that does not
+//    consult it.
+//
+// 3. It does NOT mediate org.akkay.AAOS. That is the D-Bus policy in
+//    etc/dbus-1/system.d/aaos-c2.conf, which is already default-deny and allows the
+//    aaos-ui group exactly one member, GetState. Changing this file does not change
+//    that one, and vice versa.
+// ---------------------------------------------------------------------------
+//
+// On matching by NAME and not by UID. The mission brief described the daemon as
+// "UID 985". It is not pinned to 985 or to anything else: etc/sysusers.d/aaos-c2.conf
+// declares `u aaos-c2 -`, so systemd-sysusers allocates whatever UID is free on that
+// host. A rule keyed to 985 would authorise-or-deny whichever account happened to land
+// there on a given install, and would silently stop matching aaos-c2 on any install
+// that allocated differently. Both failure directions are bad and neither is visible.
+// subject.user is the identity; the number is an implementation detail of one machine.
+//
+// Ordering: polkit evaluates rules.d in lexical filename order and the first rule
+// returning a value other than undefined wins. 49- sorts before the shipped
+// 50-default.rules, so these denials are authoritative.
+
+(function () {
+    "use strict";
+
+    // The agent runtime. Anything running as one of these is an agent or its sandbox,
+    // never a person at a keyboard.
+    var AGENT_USERS = ["aaos-c2", "nobody"];
+    var AGENT_GROUPS = ["aaos-c2", "aaos-ui"];
+
+    // Actions the agent runtime may perform. DELIBERATELY EMPTY.
+    //
+    // The daemon writes a heartbeat to /traces and a state file to /store. It holds no
+    // capabilities, has NFTSet-filtered egress (DNS/HTTPS only) and
+    // RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6, and asks no privileged
+    // service for anything. There is no polkit action it needs, so the honest
+    // allowlist is the empty one.
+    //
+    // Adding an entry here widens what an agent may ask the host to do on its behalf.
+    // Do it with a decision recorded in AAOS-DECISIONS.md, naming the action id and why
+    // the agent cannot do its job without it. An entry added "just in case" is the
+    // whole category of thing AEAC exists to refuse.
+    var ALLOWED_ACTIONS = [];
+
+    // Refused first and by name, so the log line says escalation rather than
+    // "unmatched action". org.freedesktop.policykit.exec is pkexec.
+    var ESCALATION_ACTIONS = [
+        "org.freedesktop.policykit.exec",
+        "org.freedesktop.systemd1.manage-units",
+        "org.freedesktop.systemd1.manage-unit-files",
+        "org.freedesktop.systemd1.set-environment",
+        "org.freedesktop.login1.power-off",
+        "org.freedesktop.login1.reboot",
+        "org.freedesktop.machine1.host-shell",
+        "org.freedesktop.machine1.shell"
+    ];
+
+    function contains(list, value) {
+        for (var i = 0; i < list.length; i += 1) {
+            if (list[i] === value) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function isAgentRuntime(subject) {
+        if (contains(AGENT_USERS, subject.user)) {
+            return true;
+        }
+        for (var i = 0; i < AGENT_GROUPS.length; i += 1) {
+            if (subject.isInGroup(AGENT_GROUPS[i])) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Escalation, refused explicitly and logged as such.
+    polkit.addRule(function (action, subject) {
+        if (!isAgentRuntime(subject)) {
+            return undefined;
+        }
+        if (contains(ESCALATION_ACTIONS, action.id)) {
+            polkit.log("AAOS AEAC: refused escalation " + action.id +
+                       " for " + subject.user);
+            return polkit.Result.NO;
+        }
+        return undefined;
+    });
+
+    // Deny-by-default for everything else the agent runtime might ask for.
+    //
+    // Returning NO rather than falling through matters: undefined would hand the
+    // decision to 50-default.rules, which grants several actions to local active
+    // sessions. The daemon is not a session, so that would probably refuse anyway,
+    // and "probably" is not the posture this file is for.
+    polkit.addRule(function (action, subject) {
+        if (!isAgentRuntime(subject)) {
+            return undefined;
+        }
+        if (contains(ALLOWED_ACTIONS, action.id)) {
+            polkit.log("AAOS AEAC: permitted allowlisted " + action.id +
+                       " for " + subject.user);
+            return polkit.Result.YES;
+        }
+        polkit.log("AAOS AEAC: denied " + action.id + " for " + subject.user);
+        return polkit.Result.NO;
+    });
+}());

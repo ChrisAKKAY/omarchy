@@ -1,0 +1,76 @@
+# Owns org.akkay.aaos.C2 and dispatches FetchURL/ListSources to aaos_c2_dbus.py.
+# Enable only via scripts/enable_aaos_host.sh on 4of9.
+# Fetch happens in this unit, so it shares the C2 nftables set.
+
+[Unit]
+Description=AAOS C2 fetch-on-behalf D-Bus binding
+Documentation=https://github.com/ChrisAKKAY/AkkayAgenticOS
+After=local-fs.target dbus.service aaos-c2-nftables.service network-online.target
+Wants=network-online.target
+Requires=dbus.service aaos-c2-nftables.service
+ConditionPathIsDirectory=/store
+ConditionPathIsDirectory=/knowledge
+ConditionPathIsDirectory=/traces
+ConditionPathExists=/opt/aaos/scripts/aaos_c2_dbus.py
+ConditionPathExists=/usr/sbin/aaos-c2-bus
+
+[Service]
+Type=dbus
+BusName=org.akkay.aaos.C2
+User=aaos-c2
+Group=aaos-c2
+UMask=0077
+WorkingDirectory=/opt/aaos
+Environment=PATH=/usr/bin:/bin
+Environment=AAOS_STORE=/store
+Environment=AAOS_KNOWLEDGE=/knowledge
+Environment=AAOS_TRACES=/traces
+Environment=AAOS_C2_OPERATOR=k
+Environment=AAOS_ROOT=/opt/aaos
+Environment=PYTHONNOUSERSITE=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/env python3.12 /usr/sbin/aaos-c2-bus --root /opt/aaos
+Restart=on-failure
+RestartPreventExitStatus=2
+RestartSec=5
+TimeoutStopSec=20
+KillMode=mixed
+
+NoNewPrivileges=true
+SecureBits=noroot-locked
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=true
+PrivateDevices=true
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectProc=invisible
+ProcSubset=pid
+ProtectSystem=strict
+ProtectHome=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictNamespaces=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @reboot @swap @module @raw-io @mount @debug @obsolete @resources
+SystemCallErrorNumber=EPERM
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+NFTSet=cgroup:inet:aaos:aaos_c2_cgroup
+DevicePolicy=closed
+KeyringMode=private
+ReadWritePaths=/store /traces
+ReadOnlyPaths=/opt/aaos /usr
+InaccessiblePaths=/home /root /boot /etc/shadow /etc/gshadow /run/sudo -/var/lib/sss
+StandardOutput=append:/traces/aaos-c2-bus.stdout.log
+StandardError=append:/traces/aaos-c2-bus.stderr.log
+
+[Install]
+WantedBy=multi-user.target
+WantedBy=aaos-c2.service

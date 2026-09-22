@@ -1,0 +1,20 @@
+# Programme name: aaos-memory. Do not enable this filename.
+# systemd will not bind this unit to /mnt/aaos/fuse; install/enable
+# default/systemd/system/mnt-aaos-fuse.mount instead.
+
+[Unit]
+Description=AAOS L10 memory FUSE stub
+DefaultDependencies=no
+Conflicts=umount.target
+Before=local-fs.target
+ConditionPathIsDirectory=/mnt/aaos/fuse
+ConditionPathExists=/usr/sbin/aaos-memory-fuse
+
+[Mount]
+What=/usr/sbin/aaos-memory-fuse
+Where=/mnt/aaos/fuse
+Type=fuse
+Options=nodev,nosuid,noexec,default_permissions
+
+[Install]
+# Intentionally empty. systemctl enable is a later host act.

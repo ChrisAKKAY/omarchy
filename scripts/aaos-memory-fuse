@@ -1,0 +1,40 @@
+#!/bin/bash
+# Read-only FUSE view of AAOS knowledge at /mnt/aaos/fuse.
+# Agents see ordinary files. The mount is ro, noexec, nosuid, nodev.
+# Requires bindfs. Does not copy or rewrite records.
+# Missing backing store is a refusal, not an empty mount.
+set -euo pipefail
+
+refuse() {
+  printf '%s\n' "refuse: $*" >&2
+  exit 1
+}
+
+[[ $(uname -s) == Linux ]] || refuse "aaos-memory-fuse is Linux-only"
+
+src=${AAOS_KNOWLEDGE:-/knowledge}
+mp=${1:-/mnt/aaos/fuse}
+
+[[ $src == /* && $mp == /* ]] || refuse "knowledge and mount paths must be absolute"
+[[ $src != "$mp" ]] || refuse "source and mountpoint must be disjoint"
+[[ -d $src ]] || refuse "knowledge tree is missing"
+[[ -d $mp ]] || refuse "mountpoint is missing"
+[[ -r $src && -x $src ]] || refuse "knowledge tree is not traversable"
+
+if findmnt -n -M "$mp" >/dev/null 2>&1; then
+  fstype=$(findmnt -n -o FSTYPE -M "$mp" || true)
+  opts=$(findmnt -n -o OPTIONS -M "$mp" || true)
+  if [[ $fstype == fuse* || $fstype == fuse.bindfs ]]; then
+    [[ ,$opts, == *,ro,* ]] || refuse "existing FUSE mount is not read-only"
+    printf '%s\n' "aaos-memory-fuse already mounted"
+    exit 0
+  fi
+  refuse "mountpoint is occupied by $fstype"
+fi
+
+command -v bindfs >/dev/null || refuse "bindfs is missing"
+
+# Foreground so systemd Type=simple supervises the FUSE process.
+exec bindfs -f -r --perms=a=rX \
+  -o allow_other,nosuid,nodev,noexec,fsname=aaos-memory \
+  "$src" "$mp"

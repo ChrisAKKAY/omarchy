@@ -1,0 +1,41 @@
+#!/usr/bin/nft -f
+# AAOS C2 egress. Loaded by aaos-c2-nftables.service before aaos-c2.service.
+# systemd NFTSet=cgroup:inet:aaos:aaos_c2_cgroup inserts this unit's cgroup.
+# Hook policy is accept so other processes are untouched. Only the C2 cgroup
+# jumps into aaos_c2_out, which is default-drop with DNS/HTTPS exceptions.
+#
+# DNS to systemd-resolved (127.0.0.53 / ::1) is accepted before the loopback
+# reject. Without that, every fetch reports UNREACHABLE while looking like a
+# network fault. RFC1918/link-local/CGNAT reject is the second lock on the
+# same door the Python SSRF gate guards.
+
+destroy table inet aaos
+
+table inet aaos {
+  set aaos_c2_cgroup {
+    type cgroupsv2;
+  }
+
+  chain aaos_c2_egress {
+    type filter hook output priority filter; policy accept;
+    socket cgroupv2 level 2 @aaos_c2_cgroup jump aaos_c2_out
+  }
+
+  chain aaos_c2_out {
+    ip daddr 127.0.0.53 udp dport 53 accept
+    ip daddr 127.0.0.53 tcp dport 53 accept
+    ip daddr 127.0.0.1 udp dport 53 accept
+    ip daddr 127.0.0.1 tcp dport 53 accept
+    ip6 daddr ::1 udp dport 53 accept
+    ip6 daddr ::1 tcp dport 53 accept
+
+    ip daddr { 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16,
+               169.254.0.0/16, 100.64.0.0/10 } reject
+    ip6 daddr { ::1, fc00::/7, fe80::/10 } reject
+
+    udp dport 53 accept
+    tcp dport 53 accept
+    tcp dport 443 accept
+    drop
+  }
+}

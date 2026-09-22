@@ -1,0 +1,37 @@
+# Fallback FUSE supervisor if fuse.bindfs .mount is unavailable.
+# Enable only via scripts/enable_aaos_host.sh on 4of9.
+
+[Unit]
+Description=AAOS L10 read-only memory FUSE helper
+Documentation=https://github.com/ChrisAKKAY/AkkayAgenticOS
+After=local-fs.target systemd-tmpfiles-setup.service
+Before=aaos-c2.service
+ConditionPathIsDirectory=/knowledge
+ConditionPathIsDirectory=/mnt/aaos/fuse
+ConditionPathExists=/usr/sbin/aaos-memory-fuse
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/aaos-memory-fuse /mnt/aaos/fuse
+ExecStop=/usr/bin/fusermount3 -u /mnt/aaos/fuse
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+
+# bindfs/fusermount need /dev/fuse and must be allowed to mount.
+# NoNewPrivileges would block fusermount setuid.
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/knowledge
+ReadWritePaths=/mnt/aaos/fuse
+PrivateTmp=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+SystemCallArchitectures=native
+DeviceAllow=/dev/fuse rw
+PrivateDevices=false
+UMask=0022
+
+[Install]
+WantedBy=multi-user.target

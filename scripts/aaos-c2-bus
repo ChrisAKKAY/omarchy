@@ -1,0 +1,171 @@
+#!/usr/bin/env python3.12
+"""Omarchy bus binding for fetch-on-behalf. Owns org.akkay.aaos.C2. Policy lives elsewhere.
+
+This is the transport Claude's method surface does not contain. Python's standard library
+has no D-Bus client, so the name is owned here with Gio and every call is handed straight
+to aaos_c2_dbus.dispatch(). Who may call is etc/dbus-1/system.d/aaos-c2.conf. What may be
+fetched is the allowlist. This file marshals.
+
+Fail closed: missing Gio, missing aaos_c2_dbus, failed preflight, or a lost bus name all
+exit. systemd restarts on failure except exit 2 (preflight), matching aaos-c2.service.
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+from pathlib import Path
+
+AAOS_SCRIPTS = Path(os.environ.get("AAOS_ROOT", "/opt/aaos")) / "scripts"
+if str(AAOS_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(AAOS_SCRIPTS))
+
+
+def load_surface():
+    """Import the AAOS method surface. Binding code does not duplicate it."""
+    try:
+        import aaos_c2
+        import aaos_c2_dbus
+    except ImportError as exc:
+        raise SystemExit(f"refuse: AAOS method surface is missing ({exc})") from exc
+    return aaos_c2, aaos_c2_dbus
+
+
+def handle_call(surface, method, args, *, root, trees, actor):
+    """The one place Gio is not allowed to inspect or rewrite arguments."""
+    _aaos_c2, dbus = surface
+    return dbus.dispatch(method, args, root=root, trees=trees, actor=actor)
+
+
+def payload_for_reply(method, reply):
+    """Plain Python payload a Gio layer marshals. Never includes the error body path."""
+    if method == "FetchURL":
+        body = reply.body if isinstance(reply.body, (bytes, bytearray)) else b""
+        return bytes(body), dict(reply.meta)
+    return list(reply.meta.get("sources") or [])
+
+
+def _sv(glib, value):
+    if isinstance(value, bool):
+        return glib.Variant("b", value)
+    if isinstance(value, int):
+        return glib.Variant("x", int(value))
+    if isinstance(value, float):
+        return glib.Variant("d", value)
+    return glib.Variant("s", "" if value is None else str(value))
+
+
+def _sv_dict(glib, mapping):
+    return {str(key): _sv(glib, val) for key, val in dict(mapping).items()}
+
+
+def return_reply(glib, invocation, method, reply):
+    """Marshal a Reply onto the bus. Named errors stay named. The body is not logged."""
+    if not reply.ok:
+        invocation.return_dbus_error(reply.error_name, reply.detail or reply.error_name)
+        return
+    if method == "FetchURL":
+        body, meta = payload_for_reply(method, reply)
+        invocation.return_value(glib.Variant("(aya{sv})", (body, _sv_dict(glib, meta))))
+        return
+    sources = payload_for_reply(method, reply)
+    invocation.return_value(
+        glib.Variant("(aa{sv})", ([_sv_dict(glib, row) for row in sources],))
+    )
+
+
+def require_gi():
+    try:
+        import gi
+        gi.require_version("Gio", "2.0")
+        gi.require_version("GLib", "2.0")
+        from gi.repository import Gio, GLib
+    except (ImportError, ValueError) as exc:
+        raise SystemExit(f"refuse: PyGObject Gio is missing ({exc})") from exc
+    return Gio, GLib
+
+
+def check(root):
+    """Enable-time preflight. Imports Gio and the method surface. Does not claim the name."""
+    Gio, _GLib = require_gi()
+    aaos_c2, dbus = load_surface()
+    if dbus.BUS_NAME != "org.akkay.aaos.C2":
+        raise SystemExit("refuse: aaos_c2_dbus.BUS_NAME is not org.akkay.aaos.C2")
+    _ = Gio  # imported, so the unit can own the name
+    try:
+        aaos_c2.preflight(root=root)
+    except aaos_c2.C2Error as exc:
+        print(f"refuse: {exc}", file=sys.stderr)
+        return 2
+    print("ok - bus binding preflight")
+    return 0
+
+
+def serve(root):
+    Gio, GLib = require_gi()
+    aaos_c2, dbus = load_surface()
+    try:
+        trees, actor = aaos_c2.preflight(root=root)
+    except aaos_c2.C2Error as exc:
+        print(f"refuse: {exc}", file=sys.stderr)
+        return 2
+
+    surface = (aaos_c2, dbus)
+    loop = GLib.MainLoop()
+    acquired = {"ok": False}
+
+    def on_method_call(
+        _connection, _sender, _object_path, _interface, method, parameters, invocation
+    ):
+        args = list(parameters.unpack())
+        reply = handle_call(surface, method, args, root=root, trees=trees, actor=actor)
+        return_reply(GLib, invocation, method, reply)
+
+    def on_bus_acquired(connection, _name):
+        node = Gio.DBusNodeInfo.new_for_xml(dbus.introspect())
+        if not node.interfaces:
+            print("refuse: introspection XML exported no interface", file=sys.stderr)
+            loop.quit()
+            return
+        connection.register_object(
+            dbus.OBJECT_PATH,
+            node.interfaces[0],
+            on_method_call,
+            None,
+            None,
+        )
+
+    def on_name_acquired(_connection, _name):
+        acquired["ok"] = True
+
+    def on_name_lost(_connection, _name):
+        if not acquired["ok"]:
+            print("refuse: could not own org.akkay.aaos.C2", file=sys.stderr)
+        loop.quit()
+
+    Gio.bus_own_name(
+        Gio.BusType.SYSTEM,
+        dbus.BUS_NAME,
+        Gio.BusNameOwnerFlags.DO_NOT_QUEUE,
+        on_bus_acquired,
+        on_name_acquired,
+        on_name_lost,
+    )
+    loop.run()
+    return 0 if acquired["ok"] else 1
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="AAOS C2 fetch-on-behalf bus binding.")
+    parser.add_argument("--root", default=os.environ.get("AAOS_ROOT", "/opt/aaos"))
+    parser.add_argument("--check", action="store_true",
+                        help="import Gio and the method surface, do not own the name")
+    args = parser.parse_args(argv)
+    root = Path(args.root)
+    if args.check:
+        return check(root)
+    return serve(root)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,21 @@
+# Canonical FUSE unit. Filename is systemd-escape of Where=/mnt/aaos/fuse.
+# Enable only via scripts/enable_aaos_host.sh on 4of9, or stage_local_linux.sh.
+# Missing /knowledge must fail this unit, not skip it.
+
+[Unit]
+Description=AAOS L10 read-only memory FUSE
+Documentation=https://github.com/ChrisAKKAY/AkkayAgenticOS
+After=local-fs.target systemd-tmpfiles-setup.service
+Before=aaos-c2.service
+Requires=systemd-tmpfiles-setup.service
+
+[Mount]
+What=/knowledge
+Where=/mnt/aaos/fuse
+Type=fuse.bindfs
+Options=ro,nosuid,nodev,noexec,allow_other,perms=a=rX,fsname=aaos-memory
+LazyUnmount=true
+TimeoutSec=20
+
+[Install]
+WantedBy=multi-user.target

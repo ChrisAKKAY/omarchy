@@ -1,0 +1,82 @@
+# AAOS C2 headless backend. Enable only via scripts/enable_aaos_host.sh on 4of9.
+# Daemon: /opt/aaos/scripts/aaos_c2.py (Claude). This file confines the process.
+# Privilege drop is User=aaos-c2. Python does not claim D-Bus in this slice.
+
+[Unit]
+Description=AAOS C2 headless daemon
+Documentation=https://github.com/ChrisAKKAY/AkkayAgenticOS
+After=local-fs.target systemd-tmpfiles-setup.service mnt-aaos-fuse.mount aaos-memory-fuse.service dbus.service network-online.target aaos-c2-nftables.service
+Wants=network-online.target mnt-aaos-fuse.mount aaos-c2-dbus.service
+Requires=dbus.service aaos-c2-nftables.service
+ConditionPathIsDirectory=/store
+ConditionPathIsDirectory=/knowledge
+ConditionPathIsDirectory=/traces
+ConditionPathExists=/opt/aaos/scripts/aaos_c2.py
+
+[Service]
+Type=simple
+User=aaos-c2
+Group=aaos-c2
+UMask=0077
+WorkingDirectory=/opt/aaos
+# Trees are sibling roots. None is nested in another. C2 refuses a writable
+# tree that equals, contains, or sits inside AAOS_KNOWLEDGE.
+Environment=PATH=/usr/bin:/bin
+Environment=AAOS_STORE=/store
+Environment=AAOS_KNOWLEDGE=/knowledge
+Environment=AAOS_TRACES=/traces
+Environment=AAOS_C2_OPERATOR=k
+Environment=PYTHONNOUSERSITE=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+# L-16 spawn is not this unit. The daemon issues tokens; Omarchy
+# scripts/spawn_agent_sandbox.sh enforces allowed_commands.
+ExecStart=/usr/bin/env python3.12 /opt/aaos/scripts/aaos_c2.py --root /opt/aaos
+Restart=on-failure
+RestartPreventExitStatus=2
+RestartSec=5
+TimeoutStopSec=20
+KillMode=mixed
+
+NoNewPrivileges=true
+SecureBits=noroot-locked
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=true
+PrivateDevices=true
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectProc=invisible
+ProcSubset=pid
+ProtectSystem=strict
+ProtectHome=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictNamespaces=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @reboot @swap @module @raw-io @mount @debug @obsolete @resources
+SystemCallErrorNumber=EPERM
+# Fetch-on-behalf needs outbound DNS and HTTPS. IPAddressDeny=any is address-only
+# and would drop :443 before nftables could accept it, so the blanket deny is
+# replaced by NFTSet. Table inet aaos / set aaos_c2_cgroup is loaded by
+# aaos-c2-nftables.service; the nft rules allow :53 and :443 and reject
+# RFC1918/link-local/loopback. PrivateNetwork=yes must not be set on this unit.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+NFTSet=cgroup:inet:aaos:aaos_c2_cgroup
+DevicePolicy=closed
+KeyringMode=private
+ReadWritePaths=/store /traces
+ReadOnlyPaths=/opt/aaos /usr
+InaccessiblePaths=/home /root /boot /etc/shadow /etc/gshadow /run/sudo -/var/lib/sss
+StandardOutput=append:/traces/aaos-c2.stdout.log
+StandardError=append:/traces/aaos-c2.stderr.log
+
+[Install]
+# Present for reboot. Enable only via scripts/enable_aaos_host.sh on 4of9.
+WantedBy=multi-user.target
