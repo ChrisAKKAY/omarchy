@@ -55,6 +55,10 @@ grep -q 'deny own="org.akkay.aaos.C2"' "$policy" ||
   fail "default dbus policy still denies owning org.akkay.aaos.C2"
 grep -q 'allow own="org.akkay.aaos.C2"' "$policy" ||
   fail "aaos-c2 may own org.akkay.aaos.C2"
+grep -q 'deny send_interface="org.akkay.aaos.C2.Control1"' "$policy" ||
+  fail "dbus denies Control1 to aaos-agent"
+grep -q 'deny send_member="ApproveTask"' "$policy" ||
+  fail "dbus denies ApproveTask to aaos-agent"
 pass "sandbox can reach a bus that is allowed to list org.akkay.aaos.C2"
 
 # Marshalling without Gio: handle_call must pass arguments through dispatch unchanged.

@@ -1,0 +1,25 @@
+#!/bin/bash
+# omarchy:summary=Query AAOS C2 over D-Bus (Control1)
+# omarchy:group=aaos
+# omarchy:hidden=true
+# omarchy:args=[--json] <status|missions|tasks|approve> [id]
+# omarchy:examples=aaos status | aaos missions | aaos approve T-001
+#
+# Operator CLI. Talks to org.akkay.aaos.C2.Control1 only. Does not read store trees.
+# Sandboxed agents must not gain Control1; that is dbus policy, not this wrapper.
+set -euo pipefail
+
+refuse() {
+  printf 'refuse: %s\n' "$*" >&2
+  exit 1
+}
+
+[[ -n ${OMARCHY_PATH:-} ]] || refuse "OMARCHY_PATH is unset"
+cli=$OMARCHY_PATH/src/user-space/aaos-cli/aaos.py
+[[ -f $cli ]] || refuse "aaos CLI is missing at $cli"
+
+py=python3
+command -v python3 >/dev/null || py=python3.12
+command -v "$py" >/dev/null || refuse "python3 is missing"
+
+exec "$py" "$cli" "$@"
