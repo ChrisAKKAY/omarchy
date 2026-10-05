@@ -12,6 +12,7 @@ cleanup() {
     kill "$QS_PID" 2>/dev/null || true
     wait "$QS_PID" 2>/dev/null || true
   fi
+  [[ -n ${test_root:-} ]] && rm -f "$(shell_ipc_socket "$test_root")"
   if [[ -n $TMPDIR && -d $TMPDIR ]]; then
     rm -rf "$TMPDIR"
   fi
@@ -21,12 +22,12 @@ trap cleanup EXIT
 require_compositor "screenshot sanity test"
 
 if ! command -v quickshell >/dev/null 2>&1; then
-  pass "quickshell not installed; skipping screenshot sanity test"
+  skip "quickshell not installed; skipping screenshot sanity test"
   exit 0
 fi
 
 if pgrep -x omasnap >/dev/null 2>&1; then
-  pass "omasnap is already running; skipping screenshot sanity test"
+  skip "omasnap is already running; skipping screenshot sanity test"
   exit 0
 fi
 
